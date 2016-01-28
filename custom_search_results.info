@@ -1,0 +1,22 @@
+name = Custom Search Results
+description = Search results pane to work with the ApacheSOLR module.
+core = 7.x
+
+dependencies[] = apachesolr_search
+dependencies[] = apachesolr
+dependencies[] = search
+
+files[] = .module
+files[] = .install
+files[] = .admin.inc
+files[] = Custom_Seach_Results_Solr_Base_Query.php
+files[] = plugins/content_types/icon_search.png
+files[] = plugins/content_types/results_pane.inc
+files[] = plugins/facetapi/adapter.inc
+files[] = plugins/facetapi/url_processor_single_item.inc
+files[] = templates/custom-search-results-no-keys.tpl.php
+files[] = templates/custom-search-results-no-results.tpl.php
+files[] = templates/custom-search-results-search-result.tpl.php
+files[] = templates/custom-search-results-search-results.tpl.php
+
+configure = admin/config//settings

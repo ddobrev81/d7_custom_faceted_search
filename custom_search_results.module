@@ -1,0 +1,595 @@
+<?php
+
+/**
+ * Created on July 27, 2012
+ *
+ * @file
+ *
+ * prp_search_results.module
+ * @author Lachezar Valchev
+ * <lachezar@propeople.dk>
+ *
+ * @version 1.0
+ */
+define('PRP_SEARCH_RESULTS_WATCHDOG_TYPE', 'ProPeople search results');
+
+/**
+ * Implements hook_help().
+ */
+function prp_search_results_help($path, $arg) {
+  $output = '';
+
+  switch ($path) {
+    case "admin/help#prp_search_results":
+      $output = 'The module adds ctools content type plugin that renders';
+      $output .= ' search results from the ApacheSOLR search.';
+      break;
+    case 'prp_search_results#noresults':
+      return t('No results');
+  }
+
+  return $output;
+}
+
+/**
+ * Implements hook_menu().
+ */
+function prp_search_results_menu() {
+  $items = array();
+
+  $items['admin/config/prp_search_results'] = array(
+    'title' => 'ProPeople search results',
+    'description' => 'Settings page for the ProPeople search results module.',
+    'position' => 'left',
+    'weight' => -20,
+    'page callback' => 'system_admin_menu_block_page',
+    'access arguments' => array('access administration pages'),
+    'file' => 'system.admin.inc',
+    'file path' => drupal_get_path('module', 'system'),
+  );
+
+  $items['admin/config/prp_search_results/settings'] = array(
+    'title' => 'ProPeople search results',
+    'description' => 'The admin page for the ProPeople search results module.',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('prp_search_results_config_form'),
+    'access arguments' => array('administer prp search results'),
+    'file' => 'prp_search_results.admin.inc',
+    'type' => MENU_NORMAL_ITEM,
+  );
+
+  return $items;
+}
+
+/**
+ * Implements hook_permission().
+ */
+function prp_search_results_permission() {
+  return array(
+    'administer prp search results' => array(
+      'title' => t('Administer ProPeople search results'),
+      'description' => t('Administer ProPeople search results'),
+    ),
+  );
+}
+
+/**
+ * Whenever the debug constant is enabled the function will set watchdog messages.
+ *
+ * @param string $type
+ * @param string $message
+ * @param array $variables
+ * @param string $severity
+ */
+function prp_search_results_watchdog_custom($type, $message, $variables = array(), $severity = WATCHDOG_DEBUG) {
+  if (variable_get('prp_search_results_debug', 0) == 1) {
+    watchdog($type, $message, $variables, $severity);
+  }
+}
+
+/**
+ * Implements hook_ctools_plugin_directory().
+ */
+function prp_search_results_ctools_plugin_directory($owner, $plugin_type) {
+  if ($owner == 'ctools' && $plugin_type == 'content_types') {
+    return 'plugins/' . $plugin_type;
+  }
+}
+
+/**
+ * Performs the search.
+ *
+ * @param array $conf
+ * @param string $keys
+ * @return multitype:Optional Ambigous <multitype:string , stdClass, multitype:multitype:string array multitype: Ambigous <A, string> NULL Ambigous <An, string> multitype:unknown Ambigous <The, string>   >
+ */
+function prp_search_results_do_search($conf, $keys) {
+  global $language;
+
+  $search_page = '';
+  $conditions = array();
+  $params = array();
+  $results = array();
+  $response = array();
+
+  // Get the search page
+  $search_page = apachesolr_search_page_load('core_search');
+
+  // Check for version 7.x-1.1  of ApacheSolr module.
+  if (is_array($search_page)) {
+    $search_page = (object) $search_page;
+  }
+
+  // Define the search conditions
+  if ($conditions == NULL || empty($conditions)) {
+    // Add default search conditions
+    $conditions = apachesolr_search_conditions();
+  }
+
+  // Add custom conditions
+  // Content Types
+  if (prp_search_results_add_custom_conditions($conf['content_types'], 'bundle', 'OR')) {
+    $conditions['fq'][] = prp_search_results_add_custom_conditions($conf['content_types'], 'bundle', 'OR');
+  }
+
+  if (isset($_GET['fq'])) {
+    $conditions['fq'][] = $_GET['fq'];
+  }
+
+  // TODO: FIX
+  if ((isset($conf['apachesolr_search_sort']) && $conf['apachesolr_search_sort'] == 1) || $conditions['apachesolr_search_sort']) {
+    $conditions['apachesolr_search_sort'] = 'ds_created desc';
+  }
+
+  // Check our parameters
+  if (empty($conditions) || empty($search_page)) {
+    apachesolr_failure(t('Solr search'), $keys);
+  }
+
+  // Sort options from the conditions array.
+  // @see apachesolr_search_conditions_default()
+  //   See This condition callback to find out how.
+  $solrsort = isset($conditions['apachesolr_search_sort']) ? $conditions['apachesolr_search_sort'] : '';
+
+  // What to do when we have an initial empty search
+  $empty_search_behavior = (isset($keys) && !empty($keys)) ? 'browse' : 'results';
+
+  try {
+    // Get the solr object
+    $solr = apachesolr_get_solr($search_page->env_id);
+
+    // Define parameters
+    // Filters
+    $params['fq'] = isset($conditions['fq']) ? $conditions['fq'] : array();
+
+    // Results per page
+    $params['rows'] = (isset($conf['paging']) && !empty($conf['paging']) && $conf['paging'] != 0) ? $conf['paging'] : $search_page->settings['apachesolr_search_per_page'];
+
+    $params['facet'] = 'true';
+    $params['fl'][] = 'id,entity_id,entity_type,bundle,bundle_name,label,ds_created,ds_changed,score,path,url,is_uid,tos_name, ss_name_formatted, tm_field_news_author';
+    $params['hl'] = 'true';
+    $params['hl.fl'][] = 'label';
+    $params['hl.fl'][] = 'content';
+
+    // Spellcheck
+    if (empty($search_page->settings['apachesolr_search_spellcheck'])) {
+      // Spellcheck needs to have a string as false/true
+      $params['spellcheck'] = 'false';
+    }
+    else {
+      $params['spellcheck'] = 'true';
+    }
+
+    // Empty text Behavior
+    if (!isset($keys) && !isset($conditions['f']) && ($empty_search_behavior == 'browse' || $empty_search_behavior == 'blocks')) {
+      // Pass empty search behavior as string on to apachesolr_search_search_page()
+      // Hardcoded apachesolr name since we rely on this for the facets
+
+      apachesolr_search_run_empty('apachesolr', $params, $search_page->search_path, $solr);
+
+      $results['apachesolr_search_browse'] = 'results';
+
+      if ($empty_search_behavior == 'browse') {
+        // Hide sidebar blocks for content-area browsing instead.
+        apachesolr_suppress_blocks($search_page->env_id, TRUE);
+      }
+    }
+    // Full text behavior. Triggers with a text search or a facet
+    elseif (($keys || isset($conditions['f'])) || ($empty_search_behavior == 'results')) {
+      $params['q'] = $keys;
+      // Hardcoded apachesolr name since we rely on this for the facets
+      //TODO: Check why the search_path is search/site?
+      $results = apachesolr_search_run('apachesolr', $params, $solrsort, $search_page->search_path, pager_find_page(), $solr);
+    }
+  }
+  catch (Exception $e) {
+    prp_search_results_watchdog_custom('Apache Solr', nl2br(check_plain($e->getMessage())), NULL, WATCHDOG_ERROR);
+    apachesolr_failure(t('Solr search'), $keys);
+  }
+
+  $query = apachesolr_current_query($search_page->env_id);
+  $searcher = $query->getSearcher();
+  $response = apachesolr_static_response_cache($searcher);
+
+  return array($results, $response);
+}
+
+/**
+ * Preparing filter query arguments the way they are needed from the search.
+ *
+ * @param array $condition
+ * @param string $field_index_name
+ * @param string $operator
+ */
+function prp_search_results_add_custom_conditions($condition, $field_index_name, $operator) {
+  $filtered_conditions = array();
+  $return_condition = array();
+
+  if (!empty($condition)) {
+    foreach ($condition as $condition_id => $condition_value) {
+      if ($condition_value !== 0) {
+        $filtered_conditions[$condition_id] = $condition_value;
+      }
+    }
+    if (!empty($filtered_conditions)) {
+      if (count($filtered_conditions) > 1) {
+        $return_condition = $field_index_name . ':(' . implode(' ' . $operator . ' ', $filtered_conditions) . ')';
+      }
+      else {
+        $return_condition = $field_index_name . ':(' . reset($filtered_conditions) . ')';
+      }
+    }
+  }
+
+  return $return_condition;
+}
+
+/**
+ * Implements hook_theme().
+ */
+function prp_search_results_theme($existing, $type, $theme, $path) {
+  return array(
+    'prp_search_results_no_keys' => array(
+      'variables' => array(
+        'module' => 'prp_search_results',
+      ),
+      'template' => 'prp-search-results-no-keys',
+      'path' => drupal_get_path('module', 'prp_search_results') . '/templates',
+    ),
+    'prp_search_results_no_results' => array(
+      'variables' => array(
+        'module' => 'prp_search_results',
+      ),
+      'template' => 'prp-search-results-no-results',
+      'path' => drupal_get_path('module', 'prp_search_results') . '/templates',
+    ),
+    'prp_search_results_search_results' => array(
+      'variables' => array(
+        'results' => NULL,
+        'response' => NULL,
+        'searched_keyword' => NULL,
+        'configurations' => NULL,
+        'module' => 'prp_search_results',
+      ),
+      'template' => 'prp-search-results-search-results',
+      'path' => drupal_get_path('module', 'prp_search_results') . '/templates',
+    ),
+    'prp_search_results_search_result' => array(
+      'variables' => array(
+        'result' => NULL,
+        'configurations' => NULL,
+        'module' => 'prp_search_results',
+      ),
+      'template' => 'prp-search-results-search-result',
+      'path' => drupal_get_path('module', 'prp_search_results') . '/templates',
+    ),
+  );
+}
+
+/**
+ * Process variables for prp-search-results-no-results.tpl.php.
+ *
+ * The $variables array contains the following arguments:
+ * - $module: Module the search results came from (module implementing
+ *   hook_search_info()).
+ *
+ * @see prp-search-results-no-results.tpl.php
+ */
+function template_preprocess_prp_search_results_no_results(&$variables) {
+  if (!empty($variables['module'])) {
+    $variables['module'] = check_plain($variables['module']);
+  }
+
+  $variables['search_no_results'] = prp_search_results_help('prp_search_results#noresults', drupal_help_arg());
+
+  $variables['theme_hook_suggestions'][] = 'prp_search_results_no_results__' . $variables['module'];
+}
+
+/**
+ * Process variables for prp-search-results-no-keys.tpl.php.
+ *
+ * The $variables array contains the following arguments:
+ * - $module: Module the search results came from (module implementing
+ *   hook_search_info()).
+ *
+ * @see prp-search-results-no-keys.tpl.php
+ */
+function template_preprocess_prp_search_results_no_keys(&$variables) {
+  if (!empty($variables['module'])) {
+    $variables['module'] = check_plain($variables['module']);
+  }
+
+  $output = '';
+  $output .= t('Please enter some keywords.');
+  $output .= t('Check if your spelling is correct.');
+  $output .= t('Remove quotes around phrases to search for each word individually. <em>bike shed</em> will often show more results than <em>&quot;bike shed&quot;</em>.');
+  $output .= t('Consider loosening your query with <em>OR</em>. <em>bike OR shed</em> will often show more results than <em>bike shed</em>.');
+
+  $variables['search_no_keys'] = $output;
+  $variables['theme_hook_suggestions'][] = 'prp_search_results_no_results__' . $variables['module'];
+}
+
+/**
+ * Process variables for prp-search-results-search-results.tpl.php.
+ *
+ * The $variables array contains the following arguments:
+ * - $results: Search results array.
+ * - $response:
+ * - $searched_keyword:
+ * - $configurations:
+ * - $module: Module the search results came from.
+ *
+ * @see prp-search-results-search-results.tpl.php
+ */
+function template_preprocess_prp_search_results_search_results(&$variables) {
+  $variables['search_results'] = '';
+  $configs = $variables['configurations'];
+
+  if (!empty($variables['module'])) {
+    $variables['module'] = check_plain($variables['module']);
+  }
+
+  foreach ($variables['results'] as $id => $result) {
+    $variables['search_results'] .= theme('prp_search_results_search_result', array(
+      'result' => $result,
+      'configurations' => $variables['configurations'],
+        ));
+  }
+
+  if (isset($configs['enable_paging']) && !empty($configs['enable_paging']) && $configs['paging'] != 0) {
+    prp_search_results_create_pager($variables);
+  }
+
+  $variables['theme_hook_suggestions'][] = 'prp_search_results_search_results__' . $variables['module'];
+}
+
+/**
+ * Process variables for prp-search-results-search-result.tpl.php.
+ *
+ * The $variables array contains the following arguments:
+ * - $result:
+ * - $configurations:
+ * - $module
+ *
+ * @see prp-search-results-search-result.tpl.php
+ */
+function template_preprocess_prp_search_results_search_result(&$variables) {
+  $result = $variables['result'];
+  $result_fields = $result['fields'];
+  $f = isset($_GET['f']) && is_array($_GET['f']) ? $_GET['f'] : array();
+  if (isset($result_fields['entity_type']) && $result_fields['entity_type'] == 'node') {
+    $result_label = (isset($result['snippets']['label']) && !empty($result['snippets']['label'])) ? $result['snippets']['label'] : $result_fields['label'];
+    $options = array(
+      'html' => TRUE,
+    );
+    if ($variables['configurations']['show_result_content_type']) { 
+      $variables['result_content_type'] = prp_search_results_content_type_link($variables);
+    }
+
+    // OG-4 - fix
+    if (is_array($result_label)) {
+      $label_value = reset($result_label);
+      $variables['result_title'] = l($label_value, $result_fields['path'], $options);
+    }
+    else {
+      $variables['result_title'] = l($result_label, $result_fields['path'], $options);
+    }
+
+    if (is_array($result['snippets']['content'])) {
+      $snippet_value = reset($result['snippets']['content']);
+      $variables['result_snippet'] = $snippet_value;
+    }
+    else {
+      $variables['result_snippet'] = $result['snippets']['content'];
+    }
+
+
+    if (isset($result_fields['tm_field_website']) && !empty($result_fields['tm_field_website'])) {
+      foreach ($result_fields['tm_field_website'] as $index => $url) {
+        $variables['result_websites'][$index] = l($url, $url);
+      }
+    }
+  }
+
+  $variables['theme_hook_suggestions'][] = 'prp_search_results_search_result__' . $variables['module'];
+}
+
+/**
+ *
+ * @param unknown_type $variables
+ * @return Ambigous <string, an>
+ */
+function prp_search_results_content_type_link(&$variables) {
+  $apachesolr_link_node_type = '';
+
+  $env_id = apachesolr_default_environment();
+  if (apachesolr_has_searched($env_id) && !apachesolr_suppress_blocks($env_id)) {
+    $query = apachesolr_current_query($env_id);
+    if ($query) {
+      $path = $query->getPath();
+      $options = array(
+        'attributes' => array(
+          'class' => array('search-item-' . $variables['result']['bundle']),
+        ),
+        'query' => array(
+          'keys' => $_GET['keys'],
+          'f' => array('bundle:' . $variables['result']['bundle']),
+        )
+      );
+      $apachesolr_link_node_type = apachesolr_l($variables['result']['type'], $path, $options);
+    }
+  }
+
+  return $apachesolr_link_node_type;
+}
+
+/**
+ * @param unknown_type $response
+ * @param unknown_type $variables
+ */
+function prp_search_results_create_pager(&$variables) {
+  $response = $variables['response'];
+
+  if ($response->response->numFound) {
+    prp_search_results_prepare_pager_calculations($variables);
+    $variables['pager'] = theme('pager', array('tags' => NULL));
+  }
+  else {
+    prp_search_results_prepare_pager_calculations($variables);
+  }
+}
+
+/**
+ *
+ * @param unknown_type $variables
+ */
+function prp_search_results_prepare_pager_calculations(&$variables) {
+  global $pager_page_array;
+
+  $configs = $variables['configurations'];
+
+  $variables['total_search_results'] = (!empty($variables['response'])) ? $variables['response']->response->numFound : '';
+}
+
+/**
+ *
+ * @return array|boolean
+ */
+function prp_search_results_get_apachesolr_fields() {
+  $data = '';
+  $env_id = apachesolr_default_environment();
+
+  try {
+    $solr = apachesolr_get_solr($env_id);
+    $solr->clearCache();
+    $data = $solr->getLuke();
+  }
+  catch (Exception $e) {
+    prp_search_results_watchdog_custom(PRP_SEARCH_RESULTS_WATCHDOG_TYPE, nl2br(check_plain($e->getMessage())), NULL, WATCHDOG_ERROR);
+    drupal_set_message(nl2br(check_plain($e->getMessage())), "warning");
+  }
+
+  if (isset($data) && !empty($data)) {
+    return (array) $data->fields;
+  }
+  else {
+    return FALSE;
+  }
+}
+
+/**
+ * Implements hook_apachesolr_query_prepare().
+ */
+function prp_search_results_apachesolr_query_prepare($query) {
+  $query->setQPath(TRUE);
+}
+
+/**
+ * Implements hook_form_alter().
+ */
+function prp_search_results_form_alter(&$form, &$form_state, $form_id) {
+  if ($form_id == 'facetapi_facet_display_form') {
+    $adapter = $form['#facetapi']['adapter'];
+    $facet = $form['#facetapi']['facet'];
+    $realm = $form['#facetapi']['realm'];
+    $facet_settings = $adapter->getFacet($facet)->getSettings($realm);
+
+    $form['widget']['single_item'] = array(
+      '#type' => 'checkbox',
+      '#title' => t('Enable the single item functionality. It will prevent you to select multipel terms from one facet'),
+      '#default_value' => (isset($facet_settings->settings['single_item'])) ? $facet_settings->settings['single_item'] : 0,
+    );
+
+    $form['widget']['view_all_link'] = array(
+      '#type' => 'checkbox',
+      '#title' => t('Enable the "View all" links'),
+      '#default_value' => (isset($facet_settings->settings['view_all_link'])) ? $facet_settings->settings['view_all_link'] : 0,
+    );
+  }
+}
+
+/**
+ * Implements hook_facetapi_searcher_info_alter().
+ */
+function prp_search_results_facetapi_searcher_info_alter(&$searcher_info) {
+  $searchers = array_keys($searcher_info);
+
+  foreach ($searchers as $searcher_name) {
+    $parts = explode('@', $searcher_name);
+    if ($parts[0] == 'apachesolr') {
+      $searcher_info[$searcher_name]['adapter'] = 'prp_search_results_adapter';
+      $searcher_info[$searcher_name]['url processor'] = 'single_item_standard';
+    }
+  }
+}
+
+/**
+ * Implements hook_facetapi_adapters().
+ */
+function prp_search_results_facetapi_adapters() {
+  return array(
+    'prp_search_results_adapter' => array(
+      'handler' => array(
+        'class' => 'FacetapiPrpSearchResultsFacetapiAdapter',
+      ),
+    ),
+  );
+}
+
+/**
+ * Implements hook_facetapi_facet_info().
+ * Currently it only supports the node entity type
+ */
+function prp_search_results_facetapi_facet_info($searcher_info) {
+  $facets = array();
+  if ('prp_search_results_adapter' == $searcher_info['adapter']) {
+    $environment = apachesolr_environment_load($searcher_info['instance']);
+
+    if (!empty($environment['conf']['facet callbacks'])) {
+      foreach ($environment['conf']['facet callbacks'] as $callback) {
+        if (is_callable($callback)) {
+          $facets = array_merge($facets, call_user_func($callback, $searcher_info));
+        }
+      }
+    }
+    elseif (isset($searcher_info['types']['node'])) {
+      $facets = apachesolr_default_node_facet_info($searcher_info);
+    }
+  }
+
+  return $facets;
+}
+
+/**
+ * Implements hook_facetapi_url_processors().
+ */
+function prp_search_results_facetapi_url_processors() {
+  return array(
+    'single_item_standard' => array(
+      'handler' => array(
+        'label' => t('Single item enabled URL processor'),
+        'class' => 'FacetapiUrlProcessorSingleItem',
+      ),
+    ),
+  );
+}

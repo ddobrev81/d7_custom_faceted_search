@@ -1,0 +1,27 @@
+<?php
+
+/**
+ * @file
+ */
+
+/**
+ * Implements hook_install().
+ */
+function custom_search_results_install() {
+  variable_set('apachesolr_query_class', array(
+    'file' => 'Custom_Seach_Results_Solr_Base_Query',
+    'module' => 'custom_search_results',
+    'class' => 'CustomSearchResultsSolrBaseQuery')
+  );
+}
+
+/**
+ * Add new class that extends SolrBaseQuery.
+ */
+function custom_search_results_update_7001() {
+  variable_set('apachesolr_query_class', array(
+    'file' => 'Custom_Seach_Results_Solr_Base_Query',
+    'module' => 'custom_search_results',
+    'class' => 'CustomSearchResultsSolrBaseQuery')
+  );
+}
