@@ -1,30 +1,17 @@
 <?php
 
 /**
- * Created on July 27, 2012
- *
- * @file
- *
- * prp_search_results.module
- * @author Lachezar Valchev
- * <lachezar@propeople.dk>
- *
- * @version 1.0
- */
-define('PRP_SEARCH_RESULTS_WATCHDOG_TYPE', 'ProPeople search results');
-
-/**
  * Implements hook_help().
  */
-function prp_search_results_help($path, $arg) {
+function custom_search_results_help($path, $arg) {
   $output = '';
 
   switch ($path) {
-    case "admin/help#prp_search_results":
+    case "admin/help#custom_search_results":
       $output = 'The module adds ctools content type plugin that renders';
       $output .= ' search results from the ApacheSOLR search.';
       break;
-    case 'prp_search_results#noresults':
+    case 'custom_search_results#noresults':
       return t('No results');
   }
 
@@ -34,12 +21,12 @@ function prp_search_results_help($path, $arg) {
 /**
  * Implements hook_menu().
  */
-function prp_search_results_menu() {
+function custom_search_results_menu() {
   $items = array();
 
-  $items['admin/config/prp_search_results'] = array(
-    'title' => 'ProPeople search results',
-    'description' => 'Settings page for the ProPeople search results module.',
+  $items['admin/config/custom_search_results'] = array(
+    'title' => 'Custom search results',
+    'description' => 'Settings page for the Custom search results module.',
     'position' => 'left',
     'weight' => -20,
     'page callback' => 'system_admin_menu_block_page',
@@ -48,13 +35,13 @@ function prp_search_results_menu() {
     'file path' => drupal_get_path('module', 'system'),
   );
 
-  $items['admin/config/prp_search_results/settings'] = array(
-    'title' => 'ProPeople search results',
-    'description' => 'The admin page for the ProPeople search results module.',
+  $items['admin/config/custom_search_results/settings'] = array(
+    'title' => 'Custom search results',
+    'description' => 'The admin page for the Custom search results module.',
     'page callback' => 'drupal_get_form',
-    'page arguments' => array('prp_search_results_config_form'),
-    'access arguments' => array('administer prp search results'),
-    'file' => 'prp_search_results.admin.inc',
+    'page arguments' => array('custom_search_results_config_form'),
+    'access arguments' => array('administer custom search results'),
+    'file' => 'custom_search_results.admin.inc',
     'type' => MENU_NORMAL_ITEM,
   );
 
@@ -64,11 +51,11 @@ function prp_search_results_menu() {
 /**
  * Implements hook_permission().
  */
-function prp_search_results_permission() {
+function custom_search_results_permission() {
   return array(
-    'administer prp search results' => array(
-      'title' => t('Administer ProPeople search results'),
-      'description' => t('Administer ProPeople search results'),
+    'administer custom search results' => array(
+      'title' => t('Administer Custom search results'),
+      'description' => t('Administer Custom search results'),
     ),
   );
 }
@@ -81,8 +68,8 @@ function prp_search_results_permission() {
  * @param array $variables
  * @param string $severity
  */
-function prp_search_results_watchdog_custom($type, $message, $variables = array(), $severity = WATCHDOG_DEBUG) {
-  if (variable_get('prp_search_results_debug', 0) == 1) {
+function custom_search_results_watchdog_custom($type, $message, $variables = array(), $severity = WATCHDOG_DEBUG) {
+  if (variable_get('custom_search_results_debug', 0) == 1) {
     watchdog($type, $message, $variables, $severity);
   }
 }
@@ -90,7 +77,7 @@ function prp_search_results_watchdog_custom($type, $message, $variables = array(
 /**
  * Implements hook_ctools_plugin_directory().
  */
-function prp_search_results_ctools_plugin_directory($owner, $plugin_type) {
+function custom_search_results_ctools_plugin_directory($owner, $plugin_type) {
   if ($owner == 'ctools' && $plugin_type == 'content_types') {
     return 'plugins/' . $plugin_type;
   }
@@ -103,7 +90,7 @@ function prp_search_results_ctools_plugin_directory($owner, $plugin_type) {
  * @param string $keys
  * @return multitype:Optional Ambigous <multitype:string , stdClass, multitype:multitype:string array multitype: Ambigous <A, string> NULL Ambigous <An, string> multitype:unknown Ambigous <The, string>   >
  */
-function prp_search_results_do_search($conf, $keys) {
+function custom_search_results_do_search($conf, $keys) {
   global $language;
 
   $search_page = '';
@@ -128,8 +115,8 @@ function prp_search_results_do_search($conf, $keys) {
 
   // Add custom conditions
   // Content Types
-  if (prp_search_results_add_custom_conditions($conf['content_types'], 'bundle', 'OR')) {
-    $conditions['fq'][] = prp_search_results_add_custom_conditions($conf['content_types'], 'bundle', 'OR');
+  if (custom_search_results_add_custom_conditions($conf['content_types'], 'bundle', 'OR')) {
+    $conditions['fq'][] = custom_search_results_add_custom_conditions($conf['content_types'], 'bundle', 'OR');
   }
 
   if (isset($_GET['fq'])) {
@@ -203,7 +190,7 @@ function prp_search_results_do_search($conf, $keys) {
     }
   }
   catch (Exception $e) {
-    prp_search_results_watchdog_custom('Apache Solr', nl2br(check_plain($e->getMessage())), NULL, WATCHDOG_ERROR);
+    custom_search_results_watchdog_custom('Apache Solr', nl2br(check_plain($e->getMessage())), NULL, WATCHDOG_ERROR);
     apachesolr_failure(t('Solr search'), $keys);
   }
 
@@ -221,7 +208,7 @@ function prp_search_results_do_search($conf, $keys) {
  * @param string $field_index_name
  * @param string $operator
  */
-function prp_search_results_add_custom_conditions($condition, $field_index_name, $operator) {
+function custom_search_results_add_custom_conditions($condition, $field_index_name, $operator) {
   $filtered_conditions = array();
   $return_condition = array();
 
@@ -247,74 +234,74 @@ function prp_search_results_add_custom_conditions($condition, $field_index_name,
 /**
  * Implements hook_theme().
  */
-function prp_search_results_theme($existing, $type, $theme, $path) {
+function custom_search_results_theme($existing, $type, $theme, $path) {
   return array(
-    'prp_search_results_no_keys' => array(
+    'custom_search_results_no_keys' => array(
       'variables' => array(
-        'module' => 'prp_search_results',
+        'module' => 'custom_search_results',
       ),
-      'template' => 'prp-search-results-no-keys',
-      'path' => drupal_get_path('module', 'prp_search_results') . '/templates',
+      'template' => 'custom-search-results-no-keys',
+      'path' => drupal_get_path('module', 'custom_search_results') . '/templates',
     ),
-    'prp_search_results_no_results' => array(
+    'custom_search_results_no_results' => array(
       'variables' => array(
-        'module' => 'prp_search_results',
+        'module' => 'custom_search_results',
       ),
-      'template' => 'prp-search-results-no-results',
-      'path' => drupal_get_path('module', 'prp_search_results') . '/templates',
+      'template' => 'custom-search-results-no-results',
+      'path' => drupal_get_path('module', 'custom_search_results') . '/templates',
     ),
-    'prp_search_results_search_results' => array(
+    'custom_search_results_search_results' => array(
       'variables' => array(
         'results' => NULL,
         'response' => NULL,
         'searched_keyword' => NULL,
         'configurations' => NULL,
-        'module' => 'prp_search_results',
+        'module' => 'custom_search_results',
       ),
-      'template' => 'prp-search-results-search-results',
-      'path' => drupal_get_path('module', 'prp_search_results') . '/templates',
+      'template' => 'custom-search-results-search-results',
+      'path' => drupal_get_path('module', 'custom_search_results') . '/templates',
     ),
-    'prp_search_results_search_result' => array(
+    'custom_search_results_search_result' => array(
       'variables' => array(
         'result' => NULL,
         'configurations' => NULL,
-        'module' => 'prp_search_results',
+        'module' => 'custom_search_results',
       ),
-      'template' => 'prp-search-results-search-result',
-      'path' => drupal_get_path('module', 'prp_search_results') . '/templates',
+      'template' => 'custom-search-results-search-result',
+      'path' => drupal_get_path('module', 'custom_search_results') . '/templates',
     ),
   );
 }
 
 /**
- * Process variables for prp-search-results-no-results.tpl.php.
+ * Process variables for custom-search-results-no-results.tpl.php.
  *
  * The $variables array contains the following arguments:
  * - $module: Module the search results came from (module implementing
  *   hook_search_info()).
  *
- * @see prp-search-results-no-results.tpl.php
+ * @see custom-search-results-no-results.tpl.php
  */
-function template_preprocess_prp_search_results_no_results(&$variables) {
+function template_preprocess_custom_search_results_no_results(&$variables) {
   if (!empty($variables['module'])) {
     $variables['module'] = check_plain($variables['module']);
   }
 
-  $variables['search_no_results'] = prp_search_results_help('prp_search_results#noresults', drupal_help_arg());
+  $variables['search_no_results'] = custom_search_results_help('custom_search_results#noresults', drupal_help_arg());
 
-  $variables['theme_hook_suggestions'][] = 'prp_search_results_no_results__' . $variables['module'];
+  $variables['theme_hook_suggestions'][] = 'custom_search_results_no_results__' . $variables['module'];
 }
 
 /**
- * Process variables for prp-search-results-no-keys.tpl.php.
+ * Process variables for custom-search-results-no-keys.tpl.php.
  *
  * The $variables array contains the following arguments:
  * - $module: Module the search results came from (module implementing
  *   hook_search_info()).
  *
- * @see prp-search-results-no-keys.tpl.php
+ * @see custom-search-results-no-keys.tpl.php
  */
-function template_preprocess_prp_search_results_no_keys(&$variables) {
+function template_preprocess_custom_search_results_no_keys(&$variables) {
   if (!empty($variables['module'])) {
     $variables['module'] = check_plain($variables['module']);
   }
@@ -326,11 +313,11 @@ function template_preprocess_prp_search_results_no_keys(&$variables) {
   $output .= t('Consider loosening your query with <em>OR</em>. <em>bike OR shed</em> will often show more results than <em>bike shed</em>.');
 
   $variables['search_no_keys'] = $output;
-  $variables['theme_hook_suggestions'][] = 'prp_search_results_no_results__' . $variables['module'];
+  $variables['theme_hook_suggestions'][] = 'custom_search_results_no_results__' . $variables['module'];
 }
 
 /**
- * Process variables for prp-search-results-search-results.tpl.php.
+ * Process variables for custom-search-results-search-results.tpl.php.
  *
  * The $variables array contains the following arguments:
  * - $results: Search results array.
@@ -339,9 +326,9 @@ function template_preprocess_prp_search_results_no_keys(&$variables) {
  * - $configurations:
  * - $module: Module the search results came from.
  *
- * @see prp-search-results-search-results.tpl.php
+ * @see custom-search-results-search-results.tpl.php
  */
-function template_preprocess_prp_search_results_search_results(&$variables) {
+function template_preprocess_custom_search_results_search_results(&$variables) {
   $variables['search_results'] = '';
   $configs = $variables['configurations'];
 
@@ -350,30 +337,30 @@ function template_preprocess_prp_search_results_search_results(&$variables) {
   }
 
   foreach ($variables['results'] as $id => $result) {
-    $variables['search_results'] .= theme('prp_search_results_search_result', array(
+    $variables['search_results'] .= theme('custom_search_results_search_result', array(
       'result' => $result,
       'configurations' => $variables['configurations'],
         ));
   }
 
   if (isset($configs['enable_paging']) && !empty($configs['enable_paging']) && $configs['paging'] != 0) {
-    prp_search_results_create_pager($variables);
+    custom_search_results_create_pager($variables);
   }
 
-  $variables['theme_hook_suggestions'][] = 'prp_search_results_search_results__' . $variables['module'];
+  $variables['theme_hook_suggestions'][] = 'custom_search_results_search_results__' . $variables['module'];
 }
 
 /**
- * Process variables for prp-search-results-search-result.tpl.php.
+ * Process variables for custom-search-results-search-result.tpl.php.
  *
  * The $variables array contains the following arguments:
  * - $result:
  * - $configurations:
  * - $module
  *
- * @see prp-search-results-search-result.tpl.php
+ * @see custom-search-results-search-result.tpl.php
  */
-function template_preprocess_prp_search_results_search_result(&$variables) {
+function template_preprocess_custom_search_results_search_result(&$variables) {
   $result = $variables['result'];
   $result_fields = $result['fields'];
   $f = isset($_GET['f']) && is_array($_GET['f']) ? $_GET['f'] : array();
@@ -383,7 +370,7 @@ function template_preprocess_prp_search_results_search_result(&$variables) {
       'html' => TRUE,
     );
     if ($variables['configurations']['show_result_content_type']) { 
-      $variables['result_content_type'] = prp_search_results_content_type_link($variables);
+      $variables['result_content_type'] = custom_search_results_content_type_link($variables);
     }
 
     // OG-4 - fix
@@ -411,7 +398,7 @@ function template_preprocess_prp_search_results_search_result(&$variables) {
     }
   }
 
-  $variables['theme_hook_suggestions'][] = 'prp_search_results_search_result__' . $variables['module'];
+  $variables['theme_hook_suggestions'][] = 'custom_search_results_search_result__' . $variables['module'];
 }
 
 /**
@@ -419,7 +406,7 @@ function template_preprocess_prp_search_results_search_result(&$variables) {
  * @param unknown_type $variables
  * @return Ambigous <string, an>
  */
-function prp_search_results_content_type_link(&$variables) {
+function custom_search_results_content_type_link(&$variables) {
   $apachesolr_link_node_type = '';
 
   $env_id = apachesolr_default_environment();
@@ -447,15 +434,15 @@ function prp_search_results_content_type_link(&$variables) {
  * @param unknown_type $response
  * @param unknown_type $variables
  */
-function prp_search_results_create_pager(&$variables) {
+function custom_search_results_create_pager(&$variables) {
   $response = $variables['response'];
 
   if ($response->response->numFound) {
-    prp_search_results_prepare_pager_calculations($variables);
+    custom_search_results_prepare_pager_calculations($variables);
     $variables['pager'] = theme('pager', array('tags' => NULL));
   }
   else {
-    prp_search_results_prepare_pager_calculations($variables);
+    custom_search_results_prepare_pager_calculations($variables);
   }
 }
 
@@ -463,7 +450,7 @@ function prp_search_results_create_pager(&$variables) {
  *
  * @param unknown_type $variables
  */
-function prp_search_results_prepare_pager_calculations(&$variables) {
+function custom_search_results_prepare_pager_calculations(&$variables) {
   global $pager_page_array;
 
   $configs = $variables['configurations'];
@@ -475,7 +462,7 @@ function prp_search_results_prepare_pager_calculations(&$variables) {
  *
  * @return array|boolean
  */
-function prp_search_results_get_apachesolr_fields() {
+function custom_search_results_get_apachesolr_fields() {
   $data = '';
   $env_id = apachesolr_default_environment();
 
@@ -485,7 +472,7 @@ function prp_search_results_get_apachesolr_fields() {
     $data = $solr->getLuke();
   }
   catch (Exception $e) {
-    prp_search_results_watchdog_custom(PRP_SEARCH_RESULTS_WATCHDOG_TYPE, nl2br(check_plain($e->getMessage())), NULL, WATCHDOG_ERROR);
+    custom_search_results_watchdog_custom(custom_SEARCH_RESULTS_WATCHDOG_TYPE, nl2br(check_plain($e->getMessage())), NULL, WATCHDOG_ERROR);
     drupal_set_message(nl2br(check_plain($e->getMessage())), "warning");
   }
 
@@ -500,14 +487,14 @@ function prp_search_results_get_apachesolr_fields() {
 /**
  * Implements hook_apachesolr_query_prepare().
  */
-function prp_search_results_apachesolr_query_prepare($query) {
+function custom_search_results_apachesolr_query_prepare($query) {
   $query->setQPath(TRUE);
 }
 
 /**
  * Implements hook_form_alter().
  */
-function prp_search_results_form_alter(&$form, &$form_state, $form_id) {
+function custom_search_results_form_alter(&$form, &$form_state, $form_id) {
   if ($form_id == 'facetapi_facet_display_form') {
     $adapter = $form['#facetapi']['adapter'];
     $facet = $form['#facetapi']['facet'];
@@ -531,13 +518,13 @@ function prp_search_results_form_alter(&$form, &$form_state, $form_id) {
 /**
  * Implements hook_facetapi_searcher_info_alter().
  */
-function prp_search_results_facetapi_searcher_info_alter(&$searcher_info) {
+function custom_search_results_facetapi_searcher_info_alter(&$searcher_info) {
   $searchers = array_keys($searcher_info);
 
   foreach ($searchers as $searcher_name) {
     $parts = explode('@', $searcher_name);
     if ($parts[0] == 'apachesolr') {
-      $searcher_info[$searcher_name]['adapter'] = 'prp_search_results_adapter';
+      $searcher_info[$searcher_name]['adapter'] = 'custom_search_results_adapter';
       $searcher_info[$searcher_name]['url processor'] = 'single_item_standard';
     }
   }
@@ -546,11 +533,11 @@ function prp_search_results_facetapi_searcher_info_alter(&$searcher_info) {
 /**
  * Implements hook_facetapi_adapters().
  */
-function prp_search_results_facetapi_adapters() {
+function custom_search_results_facetapi_adapters() {
   return array(
-    'prp_search_results_adapter' => array(
+    'custom_search_results_adapter' => array(
       'handler' => array(
-        'class' => 'FacetapiPrpSearchResultsFacetapiAdapter',
+        'class' => 'FacetapicustomSearchResultsFacetapiAdapter',
       ),
     ),
   );
@@ -560,9 +547,9 @@ function prp_search_results_facetapi_adapters() {
  * Implements hook_facetapi_facet_info().
  * Currently it only supports the node entity type
  */
-function prp_search_results_facetapi_facet_info($searcher_info) {
+function custom_search_results_facetapi_facet_info($searcher_info) {
   $facets = array();
-  if ('prp_search_results_adapter' == $searcher_info['adapter']) {
+  if ('custom_search_results_adapter' == $searcher_info['adapter']) {
     $environment = apachesolr_environment_load($searcher_info['instance']);
 
     if (!empty($environment['conf']['facet callbacks'])) {
@@ -583,7 +570,7 @@ function prp_search_results_facetapi_facet_info($searcher_info) {
 /**
  * Implements hook_facetapi_url_processors().
  */
-function prp_search_results_facetapi_url_processors() {
+function custom_search_results_facetapi_url_processors() {
   return array(
     'single_item_standard' => array(
       'handler' => array(
